@@ -7,29 +7,28 @@ import android.provider.MediaStore
 
 object MediaScanner {
 
-    /** Screenshots: matched by folder name or Screenshot_* filename. */
+    /** Screenshots: images whose folder (bucket) is exactly "Screenshots". */
     fun scanScreenshots(resolver: ContentResolver): List<MediaItem> {
         val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DATE_ADDED
         )
-        val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR " +
-                "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?"
-        val args = arrayOf("%Screenshots%", "Screenshot_%")
+        val selection = "${MediaStore.Images.Media.BUCKET_DISPLAY_NAME} = ?"
+        val args = arrayOf("Screenshots")
         return queryImages(resolver, collection, projection, selection, args, MediaType.SCREENSHOT)
     }
 
-    /** Camera / gallery photos: everything except screenshots. */
+    /** Camera / gallery photos: everything whose folder is NOT "Screenshots". */
     fun scanPhotos(resolver: ContentResolver): List<MediaItem> {
         val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DATE_ADDED
         )
-        val selection = "NOT (${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? OR " +
-                "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?)"
-        val args = arrayOf("%Screenshots%", "Screenshot_%")
+        val selection = "${MediaStore.Images.Media.BUCKET_DISPLAY_NAME} IS NULL OR " +
+                "${MediaStore.Images.Media.BUCKET_DISPLAY_NAME} != ?"
+        val args = arrayOf("Screenshots")
         return queryImages(resolver, collection, projection, selection, args, MediaType.PHOTO)
     }
 
