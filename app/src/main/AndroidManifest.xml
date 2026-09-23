@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Read-only access to media, plus delete permission handled via MediaStore.createDeleteRequest -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- No INTERNET permission on purpose: OCR and hashing are on-device only -->
+
+    <application
+        android:allowBackup="false"
+        android:label="Screenshot Cleaner"
+        android:icon="@android:drawable/ic_menu_gallery"
+        android:theme="@style/Theme.ScreenshotCleaner"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
