@@ -41,6 +41,8 @@ dependencies {
 
     // On-device text recognition (OCR) — bundled model, no network
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    // On-device image labeling — bundled model, no network
+    implementation("com.google.mlkit:image-labeling:17.0.9")
 
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.activity:activity-ktx:1.9.1")
