@@ -25,9 +25,12 @@ class MediaAdapter(
     private val rows = mutableListOf<Row>()
 
     /**
-     * Rebuilds rows.
-     * - Screenshots: grouped by OCR label, then by similarity within each label.
-     * - Photos / Videos: grouped by similarity only.
+     * Rebuilds rows in iOS Photos "album" style:
+     * - Screenshots: ONE header per label ("Payment / Receipt", "OTP / Code", etc.),
+     *   with all items of that label in one grid underneath. Similar items are laid
+     *   out next to each other (sorted by groupKey).
+     * - Photos / Videos: ONE header "Similar sets" for items that have duplicates,
+     *   then a "Unique" header for the rest.
      */
     fun submit(items: List<MediaItem>) {
         rows.clear()
@@ -40,20 +43,23 @@ class MediaAdapter(
             val byLabel = items.groupBy { it.label }
             for (label in Label.values()) {
                 val labelItems = byLabel[label] ?: continue
-                val byGroup = labelItems.groupBy { it.groupKey }
-                for ((groupKey, groupItems) in byGroup) {
-                    rows.add(Row.Header(groupKey, label.display, groupItems.size))
-                    groupItems.forEach { rows.add(Row.Item(it)) }
-                }
+                // Sort so items sharing a similarity group land next to each other
+                val sorted = labelItems.sortedBy { it.groupKey }
+                rows.add(Row.Header("label_${label.name}", label.display, labelItems.size))
+                sorted.forEach { rows.add(Row.Item(it)) }
             }
         } else {
-            val byGroup = items.groupBy { it.groupKey }
-            var index = 1
-            for ((groupKey, groupItems) in byGroup) {
-                val title = if (groupItems.size > 1) "Similar set $index" else "Item $index"
-                rows.add(Row.Header(groupKey, title, groupItems.size))
-                groupItems.forEach { rows.add(Row.Item(it)) }
-                index++
+            val groupCounts = items.groupingBy { it.groupKey }.eachCount()
+            val similar = items.filter { (groupCounts[it.groupKey] ?: 0) > 1 }
+                .sortedBy { it.groupKey }
+            val unique = items.filter { (groupCounts[it.groupKey] ?: 0) == 1 }
+            if (similar.isNotEmpty()) {
+                rows.add(Row.Header("hdr_similar", "Similar sets", similar.size))
+                similar.forEach { rows.add(Row.Item(it)) }
+            }
+            if (unique.isNotEmpty()) {
+                rows.add(Row.Header("hdr_unique", "Others", unique.size))
+                unique.forEach { rows.add(Row.Item(it)) }
             }
         }
         notifyDataSetChanged()
@@ -67,10 +73,19 @@ class MediaAdapter(
         onSelectionChanged()
     }
 
-    private fun selectGroup(groupKey: String, selected: Boolean) {
-        rows.filterIsInstance<Row.Item>()
-            .filter { it.item.groupKey == groupKey }
-            .forEach { it.item.selected = selected }
+    private fun selectSection(headerKey: String, selected: Boolean) {
+        val items = rows.filterIsInstance<Row.Item>().map { it.item }
+        val groupCounts = items.groupingBy { it.groupKey }.eachCount()
+        val matching = when {
+            headerKey.startsWith("label_") -> {
+                val name = headerKey.removePrefix("label_")
+                items.filter { it.label.name == name }
+            }
+            headerKey == "hdr_similar" -> items.filter { (groupCounts[it.groupKey] ?: 0) > 1 }
+            headerKey == "hdr_unique" -> items.filter { (groupCounts[it.groupKey] ?: 0) == 1 }
+            else -> emptyList()
+        }
+        matching.forEach { it.selected = selected }
         notifyDataSetChanged()
         onSelectionChanged()
     }
@@ -100,7 +115,7 @@ class MediaAdapter(
                 h.checkBox.setOnCheckedChangeListener(null)
                 h.checkBox.isChecked = false
                 h.checkBox.setOnCheckedChangeListener { _, checked ->
-                    selectGroup(row.groupKey, checked)
+                    selectSection(row.groupKey, checked)
                 }
             }
             is Row.Item -> {
