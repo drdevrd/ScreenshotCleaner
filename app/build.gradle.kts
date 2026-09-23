@@ -11,8 +11,8 @@ android {
         applicationId = "com.drdevrd.screenshotcleaner"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
     }
 
     buildTypes {
@@ -39,13 +39,17 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
 
-    // On-device text recognition (OCR) — no network call, no cloud
+    // On-device text recognition (OCR) — bundled model, no network
     implementation("com.google.mlkit:text-recognition:16.0.1")
 
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.activity:activity-ktx:1.9.1")
 
-    // For awaiting Google Play Services Task<T> from coroutines (used by ML Kit)
+    // Coroutine support for Google Tasks (ML Kit returns Task<T>)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+
+    // Coil for local image + video-frame thumbnail loading
+    implementation("io.coil-kt:coil:2.6.0")
+    implementation("io.coil-kt:coil-video:2.6.0")
 }

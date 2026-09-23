@@ -11,27 +11,29 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
-import androidx.recyclerview.widget.GridLayoutManager
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
+import com.drdevrd.screenshotcleaner.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.drdevrd.screenshotcleaner.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var adapter: ScreenshotAdapter
-    private var currentItems: List<ScreenshotItem> = emptyList()
+    private lateinit var adapter: MediaAdapter
+    private var currentType: MediaType = MediaType.SCREENSHOT
 
-    private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) runScan() else
-            Toast.makeText(this, "Permission needed to read screenshots", Toast.LENGTH_LONG).show()
+    private val permissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results.values.all { it }) {
+            runScan()
+        } else {
+            Toast.makeText(this, "Permission needed to read media", Toast.LENGTH_LONG).show()
+        }
     }
 
-    // Handles the system delete-confirmation dialog required by MediaStore.createDeleteRequest
     private val deleteLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
@@ -48,11 +50,11 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        adapter = ScreenshotAdapter(onSelectionChanged = ::updateStatus)
+        adapter = MediaAdapter(onSelectionChanged = ::updateStatus)
         val spanCount = 3
         val layoutManager = GridLayoutManager(this, spanCount)
         layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-            override fun getSpanSize(position: Int) = adapter.spanSize(position, spanCount)
+            override fun getSpanSize(position: Int): Int = adapter.spanSize(position, spanCount)
         }
         binding.recyclerView.layoutManager = layoutManager
         binding.recyclerView.adapter = adapter
@@ -63,40 +65,78 @@ class MainActivity : AppCompatActivity() {
             adapter.selectAll(!anySelected)
         }
         binding.deleteButton.setOnClickListener { deleteSelected() }
+
+        binding.bottomNav.setOnItemSelectedListener { menuItem ->
+            currentType = when (menuItem.itemId) {
+                R.id.nav_screenshots -> MediaType.SCREENSHOT
+                R.id.nav_photos -> MediaType.PHOTO
+                R.id.nav_videos -> MediaType.VIDEO
+                else -> MediaType.SCREENSHOT
+            }
+            adapter.submit(emptyList())
+            binding.statusText.text = "Tap Scan to find ${labelFor(currentType)}"
+            true
+        }
+        binding.bottomNav.selectedItemId = R.id.nav_screenshots
+    }
+
+    private fun labelFor(type: MediaType) = when (type) {
+        MediaType.SCREENSHOT -> "screenshots"
+        MediaType.PHOTO -> "photos"
+        MediaType.VIDEO -> "videos"
+    }
+
+    private fun requiredPermissions(): Array<String> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO
+            )
+        } else {
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
     }
 
     private fun checkPermissionAndScan() {
-        val permission = if (Build.VERSION.SDK_INT >= 33)
-            Manifest.permission.READ_MEDIA_IMAGES
-        else
-            Manifest.permission.READ_EXTERNAL_STORAGE
-
-        if (ActivityCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
+        val perms = requiredPermissions()
+        val missing = perms.filter {
+            ActivityCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
             runScan()
         } else {
-            permissionLauncher.launch(permission)
+            permissionsLauncher.launch(perms)
         }
     }
 
     private fun runScan() {
-        binding.statusText.text = "Scanning..."
+        binding.statusText.text = "Scanning ${labelFor(currentType)}..."
+        val typeAtStart = currentType
         lifecycleScope.launch {
             val items = withContext(Dispatchers.IO) {
-                val found = ScreenshotScanner.scan(contentResolver)
-                found.forEach { Analyzer.analyze(contentResolver, it) }
-                Analyzer.groupBySimilarity(found)
-                found
+                val found = when (typeAtStart) {
+                    MediaType.SCREENSHOT -> MediaScanner.scanScreenshots(contentResolver)
+                    MediaType.PHOTO -> MediaScanner.scanPhotos(contentResolver)
+                    MediaType.VIDEO -> MediaScanner.scanVideos(contentResolver)
+                }
+                // Cap analysis to keep first scan responsive — 800 items is plenty per tab
+                val limited = found.take(800)
+                limited.forEach { Analyzer.analyze(this@MainActivity, it) }
+                Analyzer.groupBySimilarity(limited)
+                limited
             }
-            currentItems = items
-            adapter.submit(items)
-            updateStatus()
+            // Guard against tab switch mid-scan
+            if (typeAtStart == currentType) {
+                adapter.submit(items)
+                updateStatus()
+            }
         }
     }
 
     private fun updateStatus() {
         val total = adapter.allItems().size
         val selected = adapter.allItems().count { it.selected }
-        binding.statusText.text = "$total screenshots · $selected selected"
+        binding.statusText.text = "$total ${labelFor(currentType)} · $selected selected"
     }
 
     private fun deleteSelected() {
@@ -105,14 +145,12 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Nothing selected", Toast.LENGTH_SHORT).show()
             return
         }
-        if (Build.VERSION.SDK_INT >= 30) {
-            // System-level confirmation dialog — the OS, not this app, performs the delete
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val pendingIntent = MediaStore.createDeleteRequest(contentResolver, toDelete)
             deleteLauncher.launch(
                 androidx.activity.result.IntentSenderRequest.Builder(pendingIntent.intentSender).build()
             )
         } else {
-            // Pre-Android 11 fallback: direct delete (app must own the files, which screenshots are)
             var count = 0
             toDelete.forEach { uri ->
                 try {
