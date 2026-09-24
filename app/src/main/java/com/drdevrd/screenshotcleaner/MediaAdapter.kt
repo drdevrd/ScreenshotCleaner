@@ -141,6 +141,8 @@ class MediaAdapter(
                         h.check.isChecked = true
                         onSelectionChanged()
                     }
+                    // Haptic feedback so user knows drag mode is active
+                    h.itemView.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
                     onDragStart()
                     true
                 }

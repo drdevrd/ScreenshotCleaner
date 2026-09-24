@@ -102,29 +102,14 @@ class MainActivity : AppCompatActivity() {
         // Drag-select: after long-press starts drag mode, moving finger toggles items
         binding.recyclerView.addOnItemTouchListener(object : androidx.recyclerview.widget.RecyclerView.OnItemTouchListener {
             override fun onInterceptTouchEvent(rv: androidx.recyclerview.widget.RecyclerView, e: android.view.MotionEvent): Boolean {
-                if (!dragActive) return false
-                when (e.actionMasked) {
-                    android.view.MotionEvent.ACTION_MOVE -> {
-                        val child = rv.findChildViewUnder(e.x, e.y) ?: return true
-                        val pos = rv.getChildAdapterPosition(child)
-                        if (pos >= 0 && pos != lastDragPosition) {
-                            adapter.setSelectedAt(pos, true)
-                            lastDragPosition = pos
-                        }
-                        return true
-                    }
-                    android.view.MotionEvent.ACTION_UP,
-                    android.view.MotionEvent.ACTION_CANCEL -> {
-                        dragActive = false
-                        lastDragPosition = -1
-                    }
-                }
-                return false
+                // Once drag mode is active, take over all touch events so scrolling doesn't win
+                return dragActive
             }
             override fun onTouchEvent(rv: androidx.recyclerview.widget.RecyclerView, e: android.view.MotionEvent) {
                 if (!dragActive) return
                 when (e.actionMasked) {
-                    android.view.MotionEvent.ACTION_MOVE -> {
+                    android.view.MotionEvent.ACTION_MOVE,
+                    android.view.MotionEvent.ACTION_DOWN -> {
                         val child = rv.findChildViewUnder(e.x, e.y) ?: return
                         val pos = rv.getChildAdapterPosition(child)
                         if (pos >= 0 && pos != lastDragPosition) {
