@@ -316,11 +316,19 @@ class MainActivity : AppCompatActivity() {
             allCurrentItems.toList()
         } else {
             val q = currentQuery.lowercase()
-            // Simple plural handling: "tiles" also matches "tile"
             val qStem = if (q.length > 3 && q.endsWith("s")) q.dropLast(1) else q
-            allCurrentItems.filter {
-                val haystack = "${it.ocrText} ${it.labels} ${it.category.display}".lowercase()
-                haystack.contains(q) || (qStem != q && haystack.contains(qStem))
+            val esc = Regex.escape(q)
+            val escStem = if (q != qStem) Regex.escape(qStem) else esc
+            // Word-boundary regex — "tile" won't match "percentile", "car" won't match "cardiac"
+            val pattern = if (q != qStem) {
+                Regex("\\b($esc|$escStem)\\b", RegexOption.IGNORE_CASE)
+            } else {
+                Regex("\\b$esc\\b", RegexOption.IGNORE_CASE)
+            }
+            allCurrentItems.filter { item ->
+                pattern.containsMatchIn(item.ocrText) ||
+                        pattern.containsMatchIn(item.labels) ||
+                        pattern.containsMatchIn(item.category.display)
             }
         }
         adapter.submit(filtered)
