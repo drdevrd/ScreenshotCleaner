@@ -106,15 +106,25 @@ object Analyzer {
         }
 
         // Scene-content categories
-        // Check document/paper labels FIRST so a photographed handwritten note isn't miscategorized
-        // as PEOPLE just because a hand appears in the frame.
-        if (labels.any { it in documentLabels }) return Category.DOCUMENT
-        if (labels.any { it in personLabels }) return Category.PEOPLE
+        // Strong PEOPLE signals win — a person / face / portrait means a people photo,
+        // even if banners or signage in the frame contain text/font labels.
+        val strongPerson = labels.any { it in setOf("person", "face", "portrait", "child", "baby", "selfie", "people") }
+        if (strongPerson) return Category.PEOPLE
+
+        // Strong document signals — paper / handwriting / notebook mean a document,
+        // even if a hand is visible holding it.
+        val strongDocument = labels.any { it in setOf("paper", "handwriting", "notebook", "envelope", "page", "letter") }
+        if (strongDocument) return Category.DOCUMENT
+
         if (labels.any { it in foodLabels }) return Category.FOOD
         if (labels.any { it in vehicleLabels }) return Category.VEHICLE
         if (labels.any { it in animalLabels }) return Category.ANIMAL
         if (labels.any { it in placeLabels }) return Category.PLACES
         if (labels.any { it in natureLabels }) return Category.NATURE
+
+        // Weaker signals — after scene categories
+        if (labels.any { it in personLabels }) return Category.PEOPLE
+        if (labels.any { it in documentLabels }) return Category.DOCUMENT
 
         // Text-heavy without a known pattern → generic document
         if (hasLotsOfText) return Category.DOCUMENT
