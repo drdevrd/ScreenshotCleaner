@@ -46,9 +46,12 @@ object Analyzer {
     private val productAdRegex = Regex("""(add to cart|buy now|rating|reviews?|shop now|₹\d+\s*off|% off|delivery|shipping|amazon|flipkart)""", RegexOption.IGNORE_CASE)
 
     // -------- Scene label groups (matched case-insensitive) --------
-    private val personLabels = setOf("person", "face", "smile", "child", "portrait", "people", "baby", "hair", "hand", "selfie")
+    // PEOPLE now requires stronger signals — 'hand' alone is not enough (a hand holding paper is a document)
+    private val personLabels = setOf("person", "face", "smile", "child", "portrait", "people", "baby", "selfie")
+    // Explicit document / paper indicators — checked BEFORE people so handwritten notes don't get filed as People
+    private val documentLabels = setOf("paper", "handwriting", "writing", "notebook", "envelope", "font", "letter", "document", "text", "book", "page", "receipt")
     private val foodLabels = setOf("food", "dish", "cuisine", "meal", "dessert", "fruit", "vegetable", "drink", "coffee", "tea", "cake", "bread")
-    private val placeLabels = setOf("building", "skyscraper", "architecture", "house", "monument", "temple", "church", "street", "road", "city", "bridge", "tower", "castle")
+    private val placeLabels = setOf("building", "skyscraper", "architecture", "house", "monument", "temple", "church", "street", "road", "city", "bridge", "tower", "castle", "room", "interior", "bathroom", "kitchen", "wall", "floor", "tile", "ceiling")
     private val natureLabels = setOf("plant", "tree", "flower", "leaf", "landscape", "water", "sky", "mountain", "beach", "sea", "forest", "sunset", "sunrise", "cloud", "grass", "garden")
     private val vehicleLabels = setOf("car", "vehicle", "motorcycle", "bicycle", "bike", "truck", "bus", "train", "airplane", "boat", "ship")
     private val animalLabels = setOf("dog", "cat", "bird", "animal", "pet", "wildlife", "fish", "insect", "butterfly", "cow", "horse")
@@ -103,6 +106,9 @@ object Analyzer {
         }
 
         // Scene-content categories
+        // Check document/paper labels FIRST so a photographed handwritten note isn't miscategorized
+        // as PEOPLE just because a hand appears in the frame.
+        if (labels.any { it in documentLabels }) return Category.DOCUMENT
         if (labels.any { it in personLabels }) return Category.PEOPLE
         if (labels.any { it in foodLabels }) return Category.FOOD
         if (labels.any { it in vehicleLabels }) return Category.VEHICLE
