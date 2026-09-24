@@ -29,6 +29,7 @@ data class MediaItem(
     val type: MediaType,
     val dateAddedSec: Long,
     var ocrText: String = "",
+    var labels: String = "",     // comma-separated on-device image labels
     var category: Category = Category.OTHER,
     var groupKey: String = "",   // items with the same groupKey are "similar"
     var pHash: Long = 0L,

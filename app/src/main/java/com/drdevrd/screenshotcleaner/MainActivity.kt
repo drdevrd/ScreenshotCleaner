@@ -154,6 +154,7 @@ class MainActivity : AppCompatActivity() {
                     val cached = cache[item.id] ?: return@mapNotNull null
                     item.apply {
                         ocrText = cached.ocrText
+                        labels = cached.labels
                         category = cached.category
                         pHash = cached.pHash
                     }
@@ -195,6 +196,7 @@ class MainActivity : AppCompatActivity() {
                 val hit = cache[item.id]
                 if (hit != null) {
                     item.ocrText = hit.ocrText
+                    item.labels = hit.labels
                     item.category = hit.category
                     item.pHash = hit.pHash
                     cached.add(item)
@@ -238,9 +240,11 @@ class MainActivity : AppCompatActivity() {
             allCurrentItems.toList()
         } else {
             val q = currentQuery.lowercase()
+            // Simple plural handling: "tiles" also matches "tile"
+            val qStem = if (q.length > 3 && q.endsWith("s")) q.dropLast(1) else q
             allCurrentItems.filter {
-                it.ocrText.lowercase().contains(q) ||
-                        it.category.display.lowercase().contains(q)
+                val haystack = "${it.ocrText} ${it.labels} ${it.category.display}".lowercase()
+                haystack.contains(q) || (qStem != q && haystack.contains(qStem))
             }
         }
         adapter.submit(filtered)

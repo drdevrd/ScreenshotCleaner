@@ -72,6 +72,7 @@ object Analyzer {
             try {
                 val results = labeler.process(image).await()
                 results.forEach { labels.add(it.text.lowercase()) }
+                item.labels = labels.joinToString(",")
             } catch (_: Exception) { /* leave empty */ }
         }
 
