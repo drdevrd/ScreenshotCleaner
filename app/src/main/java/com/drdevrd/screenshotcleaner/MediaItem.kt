@@ -28,6 +28,7 @@ data class MediaItem(
     val uri: Uri,
     val type: MediaType,
     val dateAddedSec: Long,
+    var ocrText: String = "",
     var category: Category = Category.OTHER,
     var groupKey: String = "",   // items with the same groupKey are "similar"
     var pHash: Long = 0L,

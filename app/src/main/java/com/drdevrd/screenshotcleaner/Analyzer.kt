@@ -65,6 +65,7 @@ object Analyzer {
             // Run OCR
             try {
                 text = recognizer.process(image).await().text
+                item.ocrText = text
             } catch (_: Exception) { /* leave empty */ }
 
             // Run image labeling

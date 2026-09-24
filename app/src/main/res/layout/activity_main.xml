@@ -17,7 +17,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Tap Scan to find screenshots"
+            android:text="Loading..."
             android:textSize="14sp" />
 
         <Button
@@ -26,6 +26,16 @@
             android:layout_height="wrap_content"
             android:text="Scan" />
     </LinearLayout>
+
+    <androidx.appcompat.widget.SearchView
+        android:id="@+id/searchView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="8dp"
+        android:layout_marginBottom="4dp"
+        android:background="#222222"
+        app:iconifiedByDefault="false"
+        app:queryHint="Search text or category (e.g. rent, house, food)" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"
