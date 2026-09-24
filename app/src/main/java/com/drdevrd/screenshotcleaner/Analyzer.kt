@@ -46,15 +46,69 @@ object Analyzer {
     private val productAdRegex = Regex("""(add to cart|buy now|rating|reviews?|shop now|₹\d+\s*off|% off|delivery|shipping|amazon|flipkart)""", RegexOption.IGNORE_CASE)
 
     // -------- Scene label groups (matched case-insensitive) --------
-    // PEOPLE now requires stronger signals — 'hand' alone is not enough (a hand holding paper is a document)
-    private val personLabels = setOf("person", "face", "smile", "child", "portrait", "people", "baby", "selfie")
-    // Explicit document / paper indicators — checked BEFORE people so handwritten notes don't get filed as People
-    private val documentLabels = setOf("paper", "handwriting", "writing", "notebook", "envelope", "font", "letter", "document", "text", "book", "page", "receipt")
-    private val foodLabels = setOf("food", "dish", "cuisine", "meal", "dessert", "fruit", "vegetable", "drink", "coffee", "tea", "cake", "bread")
-    private val placeLabels = setOf("building", "skyscraper", "architecture", "house", "monument", "temple", "church", "street", "road", "city", "bridge", "tower", "castle", "room", "interior", "bathroom", "kitchen", "wall", "floor", "tile", "ceiling")
-    private val natureLabels = setOf("plant", "tree", "flower", "leaf", "landscape", "water", "sky", "mountain", "beach", "sea", "forest", "sunset", "sunrise", "cloud", "grass", "garden")
-    private val vehicleLabels = setOf("car", "vehicle", "motorcycle", "bicycle", "bike", "truck", "bus", "train", "airplane", "boat", "ship")
-    private val animalLabels = setOf("dog", "cat", "bird", "animal", "pet", "wildlife", "fish", "insect", "butterfly", "cow", "horse")
+    // PEOPLE — includes ImageNet indirect signals (people wear suits, hold microphones, etc.)
+    private val personLabels = setOf(
+        "person", "face", "smile", "child", "portrait", "people", "baby", "selfie",
+        // ImageNet indirect: attire and event-context
+        "suit", "tuxedo", "military uniform", "academic gown", "gown", "necktie", "bow tie",
+        "microphone", "podium", "stage", "ballplayer", "groom", "bride", "wig", "sunglasses"
+    )
+    // Explicit document / paper indicators — checked before people so handwritten notes don't get filed as People
+    private val documentLabels = setOf(
+        "paper", "handwriting", "writing", "notebook", "envelope", "font", "letter",
+        "document", "text", "book", "page", "receipt",
+        // ImageNet
+        "menu", "web site", "crossword puzzle", "scoreboard", "notebook computer"
+    )
+    private val foodLabels = setOf(
+        "food", "dish", "cuisine", "meal", "dessert", "fruit", "vegetable", "drink",
+        "coffee", "tea", "cake", "bread",
+        // ImageNet specifics
+        "pizza", "hamburger", "hotdog", "burrito", "guacamole", "banana", "orange", "apple",
+        "strawberry", "lemon", "pineapple", "mushroom", "broccoli", "ice cream", "espresso",
+        "cheeseburger", "carbonara", "chocolate sauce", "trifle", "consomme", "hot pot",
+        "meat loaf", "plate"
+    )
+    private val placeLabels = setOf(
+        "building", "skyscraper", "architecture", "house", "monument", "temple", "church",
+        "street", "road", "city", "bridge", "tower", "castle", "room", "interior",
+        "bathroom", "kitchen", "wall", "floor", "tile", "ceiling",
+        // ImageNet
+        "palace", "mosque", "boathouse", "barn", "greenhouse", "library", "supermarket",
+        "restaurant", "movie theater", "beach house", "prison", "planetarium", "obelisk",
+        "fountain", "cliff dwelling"
+    )
+    private val natureLabels = setOf(
+        "plant", "tree", "flower", "leaf", "landscape", "water", "sky", "mountain",
+        "beach", "sea", "forest", "sunset", "sunrise", "cloud", "grass", "garden",
+        // ImageNet
+        "daisy", "rose", "sunflower", "tulip", "orchid", "cabbage", "coral reef", "geyser",
+        "lakeshore", "seashore", "valley", "volcano", "alp", "sandbar", "promontory"
+    )
+    private val vehicleLabels = setOf(
+        "car", "vehicle", "motorcycle", "bicycle", "bike", "truck", "bus", "train",
+        "airplane", "boat", "ship",
+        // ImageNet
+        "sports car", "convertible", "minivan", "ambulance", "beach wagon", "cab",
+        "fire engine", "garbage truck", "jeep", "limousine", "pickup", "police van",
+        "trailer truck", "moving van", "school bus", "tow truck", "trolleybus",
+        "mountain bike", "unicycle", "moped", "scooter", "canoe", "yawl", "catamaran",
+        "container ship", "fireboat", "lifeboat", "speedboat", "gondola", "aircraft carrier",
+        "airliner", "warplane", "space shuttle", "helicopter", "balloon"
+    )
+    private val animalLabels = setOf(
+        "dog", "cat", "bird", "animal", "pet", "wildlife", "fish", "insect", "butterfly",
+        "cow", "horse",
+        // ImageNet — common breeds and animals
+        "puppy", "kitten", "golden retriever", "labrador", "german shepherd", "poodle",
+        "bulldog", "beagle", "husky", "chihuahua", "pug", "rottweiler", "dalmatian",
+        "persian cat", "siamese cat", "tabby", "tiger cat",
+        "elephant", "zebra", "giraffe", "lion", "tiger", "bear", "monkey", "ape",
+        "sheep", "goat", "pig", "rabbit", "squirrel", "hamster", "guinea pig",
+        "eagle", "owl", "peacock", "parrot", "hen", "duck", "swan", "flamingo",
+        "goldfish", "shark", "starfish", "jellyfish", "crab", "lobster",
+        "spider", "bee", "ant", "grasshopper", "dragonfly", "beetle"
+    )
 
     suspend fun analyze(context: Context, item: MediaItem) {
         val bitmap = when (item.type) {
@@ -78,13 +132,27 @@ object Analyzer {
                 item.ocrText = text
             } catch (_: Exception) { /* leave empty */ }
 
-            // Run image labeling
+            // Run ML Kit image labeling (general labels: person, food, dog, plant...)
             try {
                 val results = labeler.process(image).await()
                 results.forEach { labels.add(it.text.lowercase()) }
-                item.labels = labels.joinToString(",")
             } catch (_: Exception) { /* leave empty */ }
         }
+
+        // Run TFLite EfficientNet classifier (1000 ImageNet classes: microphone, suit,
+        // golden retriever, espresso...). Skipped silently if model didn't load.
+        try {
+            val tfLabels = TfLiteClassifier.classify(bitmap)
+            tfLabels.forEach { labels.add(it) }
+        } catch (_: Exception) { /* leave empty */ }
+
+        // Dominant-color detection so "blue tiles", "green plant" etc. work in search
+        try {
+            val colors = detectDominantColors(bitmap)
+            colors.forEach { labels.add(it) }
+        } catch (_: Exception) { /* leave empty */ }
+
+        item.labels = labels.joinToString(",")
 
         item.category = categorize(text, labels)
         item.pHash = averageHash(bitmap)
@@ -130,6 +198,64 @@ object Analyzer {
         if (hasLotsOfText) return Category.DOCUMENT
 
         return Category.OTHER
+    }
+
+    /**
+     * Samples 400 pixels from a downscaled version of the image and returns
+     * every color name that makes up more than ~15% of the pixels. That gives
+     * "blue" + "white" for a mostly-blue photo with a bit of grout, etc.
+     */
+    private fun detectDominantColors(src: Bitmap): Set<String> {
+        val small = if (src.width > 20 || src.height > 20) {
+            Bitmap.createScaledBitmap(src, 20, 20, true)
+        } else src
+        val counts = HashMap<String, Int>()
+        for (y in 0 until small.height) {
+            for (x in 0 until small.width) {
+                val name = colorNameFor(small.getPixel(x, y))
+                counts[name] = (counts[name] ?: 0) + 1
+            }
+        }
+        if (small !== src) small.recycle()
+        val total = counts.values.sum()
+        val threshold = (total * 0.15).toInt().coerceAtLeast(1)
+        return counts.filterValues { it >= threshold }.keys
+    }
+
+    /**
+     * Maps an ARGB pixel to a human color name (red, orange, yellow, green,
+     * cyan, blue, purple, pink, black, gray, white, brown).
+     */
+    private fun colorNameFor(argb: Int): String {
+        val r = Color.red(argb)
+        val g = Color.green(argb)
+        val b = Color.blue(argb)
+        val hsv = FloatArray(3)
+        Color.RGBToHSV(r, g, b, hsv)
+        val h = hsv[0]
+        val s = hsv[1]
+        val v = hsv[2]
+        // Grayscale range
+        if (s < 0.15f) {
+            return when {
+                v < 0.15f -> "black"
+                v < 0.75f -> "gray"
+                else -> "white"
+            }
+        }
+        // Brownish tones — warm hue, low value, moderate saturation
+        if (h in 15f..45f && v < 0.55f) return "brown"
+        return when {
+            h < 15f || h >= 345f -> "red"
+            h < 45f -> "orange"
+            h < 65f -> "yellow"
+            h < 165f -> "green"
+            h < 200f -> "cyan"
+            h < 250f -> "blue"
+            h < 290f -> "purple"
+            h < 345f -> "pink"
+            else -> "red"
+        }
     }
 
     fun groupBySimilarity(items: List<MediaItem>, maxDistance: Int = 8) {

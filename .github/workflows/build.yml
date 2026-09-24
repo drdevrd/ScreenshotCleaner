@@ -27,6 +27,14 @@ jobs:
           fi
           chmod +x gradlew
 
+      - name: Download EfficientNet-Lite0 classifier model
+        run: |
+          mkdir -p app/src/main/assets
+          curl -L --fail --retry 3 -o app/src/main/assets/classifier.tflite \
+            "https://storage.googleapis.com/mediapipe-models/image_classifier/efficientnet_lite0/float32/1/efficientnet_lite0.tflite" \
+            || echo "WARNING: Model download failed. App will run without TFLite classifier."
+          ls -la app/src/main/assets/ || true
+
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon
 

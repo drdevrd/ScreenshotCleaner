@@ -84,6 +84,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         cacheDb = MediaCacheDb(applicationContext)
+        TfLiteClassifier.init(applicationContext)
 
         adapter = MediaAdapter(
             onSelectionChanged = ::updateStatus,
@@ -321,19 +322,21 @@ class MainActivity : AppCompatActivity() {
             allCurrentItems.toList()
         } else {
             val q = currentQuery.lowercase()
-            val qStem = if (q.length > 3 && q.endsWith("s")) q.dropLast(1) else q
-            val esc = Regex.escape(q)
-            val escStem = if (q != qStem) Regex.escape(qStem) else esc
-            // Word-boundary regex — "tile" won't match "percentile", "car" won't match "cardiac"
-            val pattern = if (q != qStem) {
-                Regex("\\b($esc|$escStem)\\b", RegexOption.IGNORE_CASE)
-            } else {
-                Regex("\\b$esc\\b", RegexOption.IGNORE_CASE)
+            // Split query into words — each word must match (AND semantics)
+            val words = q.split(Regex("\\s+")).filter { it.isNotBlank() }
+            val patterns = words.map { word ->
+                val stem = if (word.length > 3 && word.endsWith("s")) word.dropLast(1) else word
+                val esc = Regex.escape(word)
+                val escStem = if (word != stem) Regex.escape(stem) else esc
+                if (word != stem) {
+                    Regex("\\b($esc|$escStem)\\b", RegexOption.IGNORE_CASE)
+                } else {
+                    Regex("\\b$esc\\b", RegexOption.IGNORE_CASE)
+                }
             }
             allCurrentItems.filter { item ->
-                pattern.containsMatchIn(item.ocrText) ||
-                        pattern.containsMatchIn(item.labels) ||
-                        pattern.containsMatchIn(item.category.display)
+                val haystack = "${item.ocrText} ${item.labels} ${item.category.display}"
+                patterns.all { it.containsMatchIn(haystack) }
             }
         }
         adapter.submit(filtered)
