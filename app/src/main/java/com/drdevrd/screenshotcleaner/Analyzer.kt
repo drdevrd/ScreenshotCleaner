@@ -34,7 +34,14 @@ object Analyzer {
     // -------- Text patterns --------
     private val otpRegex1 = Regex("""\b\d{4,8}\b.{0,20}(otp|code|verification|verify)""", RegexOption.IGNORE_CASE)
     private val otpRegex2 = Regex("""(otp|verification code|one[- ]time password).{0,20}\b\d{4,8}\b""", RegexOption.IGNORE_CASE)
-    private val paymentRegex = Regex("""(₹|rs\.?\s?\d|inr|paid|payment|debited|credited|upi|transaction|invoice|receipt|amount\s*[:\-]?\s*[₹rs\d]|tax\s*invoice|gst|bill\s*no)""", RegexOption.IGNORE_CASE)
+    private val idCardRegex = Regex(
+        """(election\s*commission|voter\s*id|elector[' ]?s?\s*name|\bpassport\s*(no|number)?\b|republic\s*of\s*india|\baadhaar\b|\baadhar\b|unique\s*identification|\bpan\s*card\b|permanent\s*account\s*number|driving\s*licen|driver[' ]?s?\s*licen|husband[' ]?s?\s*name|\bidentity\s*card\b|\bidentification\s*card\b|govt\.?\s*of\s*india\b|government\s*of\s*india)""",
+        RegexOption.IGNORE_CASE
+    )
+    private val paymentRegex = Regex(
+        """(₹\s*\d|\brs\.?\s*\d|\binr\s*\d|\bpaid\s+(successfully|to|₹|rs)|\bpayment\b|\bdebited\b|\bcredited\b|\bupi\b|\btransaction\s*(id|no)|\binvoice\s*(no|number|#|:)|\breceipt\s*(no|number|#|:)|\bamount\s*[:\-]?\s*[₹rs\d]|tax\s*invoice|\bgst\s*(no|number|in|:)|\bbill\s*(no|number|:))""",
+        RegexOption.IGNORE_CASE
+    )
     private val chatRegex = Regex("""(whatsapp|typing\.\.\.|online|last seen|delivered|seen at|:\)|😂|😊|👍|❤️)""", RegexOption.IGNORE_CASE)
     private val productAdRegex = Regex("""(add to cart|buy now|rating|reviews?|shop now|₹\d+\s*off|% off|delivery|shipping|amazon|flipkart)""", RegexOption.IGNORE_CASE)
 
@@ -89,6 +96,7 @@ object Analyzer {
         // Text-content categories (priority — a photographed bill is still a bill)
         if (hasText) {
             if (otpRegex1.containsMatchIn(text) || otpRegex2.containsMatchIn(text)) return Category.OTP_CODE
+            if (idCardRegex.containsMatchIn(text)) return Category.ID_CARD
             if (paymentRegex.containsMatchIn(text)) return Category.BILL_RECEIPT
             if (chatRegex.containsMatchIn(text)) return Category.CHAT
             if (productAdRegex.containsMatchIn(text)) return Category.PRODUCT_AD

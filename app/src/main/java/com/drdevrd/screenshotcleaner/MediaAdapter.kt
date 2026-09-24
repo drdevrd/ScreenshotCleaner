@@ -19,10 +19,24 @@ sealed class Row {
 }
 
 class MediaAdapter(
-    private val onSelectionChanged: () -> Unit
+    private val onSelectionChanged: () -> Unit,
+    private val onDragStart: () -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private val rows = mutableListOf<Row>()
+
+    /** For drag-select: toggle the item at position to a specific selected state. */
+    fun setSelectedAt(position: Int, selected: Boolean) {
+        val row = rows.getOrNull(position) ?: return
+        if (row is Row.Item && row.item.selected != selected) {
+            row.item.selected = selected
+            notifyItemChanged(position)
+            onSelectionChanged()
+        }
+    }
+
+    fun hasAnySelection(): Boolean =
+        rows.filterIsInstance<Row.Item>().any { it.item.selected }
 
     /**
      * Group by content Category (same for screenshots, photos, and videos).
@@ -113,6 +127,15 @@ class MediaAdapter(
                     row.item.selected = !row.item.selected
                     h.check.isChecked = row.item.selected
                     onSelectionChanged()
+                }
+                h.itemView.setOnLongClickListener {
+                    if (!row.item.selected) {
+                        row.item.selected = true
+                        h.check.isChecked = true
+                        onSelectionChanged()
+                    }
+                    onDragStart()
+                    true
                 }
             }
         }

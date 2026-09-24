@@ -56,6 +56,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private var dragActive = false
+    private var lastDragPosition = -1
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -63,7 +66,10 @@ class MainActivity : AppCompatActivity() {
 
         cacheDb = MediaCacheDb(applicationContext)
 
-        adapter = MediaAdapter(onSelectionChanged = ::updateStatus)
+        adapter = MediaAdapter(
+            onSelectionChanged = ::updateStatus,
+            onDragStart = { dragActive = true }
+        )
         val spanCount = 3
         val layoutManager = GridLayoutManager(this, spanCount)
         layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
@@ -71,6 +77,49 @@ class MainActivity : AppCompatActivity() {
         }
         binding.recyclerView.layoutManager = layoutManager
         binding.recyclerView.adapter = adapter
+
+        // Drag-select: after long-press starts drag mode, moving finger toggles items
+        binding.recyclerView.addOnItemTouchListener(object : androidx.recyclerview.widget.RecyclerView.OnItemTouchListener {
+            override fun onInterceptTouchEvent(rv: androidx.recyclerview.widget.RecyclerView, e: android.view.MotionEvent): Boolean {
+                if (!dragActive) return false
+                when (e.actionMasked) {
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        val child = rv.findChildViewUnder(e.x, e.y) ?: return true
+                        val pos = rv.getChildAdapterPosition(child)
+                        if (pos >= 0 && pos != lastDragPosition) {
+                            adapter.setSelectedAt(pos, true)
+                            lastDragPosition = pos
+                        }
+                        return true
+                    }
+                    android.view.MotionEvent.ACTION_UP,
+                    android.view.MotionEvent.ACTION_CANCEL -> {
+                        dragActive = false
+                        lastDragPosition = -1
+                    }
+                }
+                return false
+            }
+            override fun onTouchEvent(rv: androidx.recyclerview.widget.RecyclerView, e: android.view.MotionEvent) {
+                if (!dragActive) return
+                when (e.actionMasked) {
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        val child = rv.findChildViewUnder(e.x, e.y) ?: return
+                        val pos = rv.getChildAdapterPosition(child)
+                        if (pos >= 0 && pos != lastDragPosition) {
+                            adapter.setSelectedAt(pos, true)
+                            lastDragPosition = pos
+                        }
+                    }
+                    android.view.MotionEvent.ACTION_UP,
+                    android.view.MotionEvent.ACTION_CANCEL -> {
+                        dragActive = false
+                        lastDragPosition = -1
+                    }
+                }
+            }
+            override fun onRequestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {}
+        })
 
         binding.scanButton.setOnClickListener { checkPermissionAndScan() }
         binding.scanButton.setOnLongClickListener {
@@ -142,31 +191,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Load cached (already-analyzed) items for current tab. Fast, no ML. */
+    /** Load cached items and, if new items exist, silently start analyzing them. */
     private fun loadCached() {
         val typeAtStart = currentType
-        binding.statusText.text = "Loading cache..."
+        binding.statusText.text = "Loading..."
         lifecycleScope.launch {
-            val items = withContext(Dispatchers.IO) {
-                val fromStore = scanForType(typeAtStart)
-                val cache = cacheDb.getAllForType(typeAtStart)
-                fromStore.mapNotNull { item ->
-                    val cached = cache[item.id] ?: return@mapNotNull null
-                    item.apply {
-                        ocrText = cached.ocrText
-                        labels = cached.labels
-                        category = cached.category
-                        pHash = cached.pHash
-                    }
-                }.also { Analyzer.groupBySimilarity(it) }
+            val fromStore = withContext(Dispatchers.IO) { scanForType(typeAtStart) }
+            val cache = withContext(Dispatchers.IO) { cacheDb.getAllForType(typeAtStart) }
+            val items = fromStore.mapNotNull { item ->
+                val cached = cache[item.id] ?: return@mapNotNull null
+                item.apply {
+                    ocrText = cached.ocrText
+                    labels = cached.labels
+                    category = cached.category
+                    pHash = cached.pHash
+                }
             }
+            Analyzer.groupBySimilarity(items)
             if (typeAtStart != currentType) return@launch
             allCurrentItems.clear()
             allCurrentItems.addAll(items)
             applyFilter()
+
+            val newCount = fromStore.size - items.size
             binding.statusText.text = when {
-                items.isEmpty() -> "Tap Scan to analyze ${labelFor(typeAtStart)}"
-                else -> "${items.size} ${labelFor(typeAtStart)} · tap Scan to add new"
+                items.isEmpty() && newCount == 0 -> "No ${labelFor(typeAtStart)}"
+                items.isEmpty() -> "$newCount ${labelFor(typeAtStart)} · tap Scan"
+                newCount == 0 -> "${items.size} ${labelFor(typeAtStart)}"
+                else -> "${items.size} ${labelFor(typeAtStart)} · $newCount new"
+            }
+            // Auto-analyze new items if cache already exists — user shouldn't have to tap Scan
+            if (items.isNotEmpty() && newCount > 0) {
+                runScan()
             }
         }
     }

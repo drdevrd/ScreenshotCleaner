@@ -10,6 +10,7 @@ enum class MediaType { SCREENSHOT, PHOTO, VIDEO }
  */
 enum class Category(val display: String) {
     OTP_CODE("OTP / Codes"),
+    ID_CARD("ID Cards / Documents"),
     BILL_RECEIPT("Bills / Receipts"),
     CHAT("Chat / Messages"),
     DOCUMENT("Documents / Text"),

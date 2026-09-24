@@ -3,8 +3,8 @@
     android:orientation="horizontal"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="10dp"
-    android:background="#EEEEEE"
+    android:padding="12dp"
+    android:background="#2A2A2A"
     android:gravity="center_vertical">
 
     <TextView
@@ -13,11 +13,14 @@
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:textStyle="bold"
-        android:textSize="15sp" />
+        android:textSize="16sp"
+        android:textColor="#FFFFFF" />
 
     <CheckBox
         android:id="@+id/groupSelectAll"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="all" />
+        android:text="all"
+        android:textColor="#FFFFFF"
+        android:buttonTint="#BB86FC" />
 </LinearLayout>
