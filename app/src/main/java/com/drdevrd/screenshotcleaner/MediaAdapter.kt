@@ -20,7 +20,8 @@ sealed class Row {
 
 class MediaAdapter(
     private val onSelectionChanged: () -> Unit,
-    private val onDragStart: () -> Unit = {}
+    private val onDragStart: () -> Unit = {},
+    private val onPreview: (MediaItem) -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     private val rows = mutableListOf<Row>()
@@ -124,9 +125,15 @@ class MediaAdapter(
                     onSelectionChanged()
                 }
                 h.itemView.setOnClickListener {
-                    row.item.selected = !row.item.selected
-                    h.check.isChecked = row.item.selected
-                    onSelectionChanged()
+                    if (hasAnySelection()) {
+                        // In selection mode: tap toggles selection
+                        row.item.selected = !row.item.selected
+                        h.check.isChecked = row.item.selected
+                        onSelectionChanged()
+                    } else {
+                        // Not in selection mode: tap opens preview
+                        onPreview(row.item)
+                    }
                 }
                 h.itemView.setOnLongClickListener {
                     if (!row.item.selected) {

@@ -49,11 +49,30 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            Toast.makeText(this, "Deleted", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Moved to trash", Toast.LENGTH_SHORT).show()
             loadCached()
         } else {
-            Toast.makeText(this, "Delete cancelled", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Cancelled", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private val previewLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            // Item was trashed from preview — refresh list
+            loadCached()
+        }
+    }
+
+    private fun openPreview(item: MediaItem) {
+        val intent = android.content.Intent(this, PreviewActivity::class.java).apply {
+            putExtra(PreviewActivity.EXTRA_URI, item.uri.toString())
+            putExtra(PreviewActivity.EXTRA_IS_VIDEO, item.type == MediaType.VIDEO)
+            putExtra(PreviewActivity.EXTRA_OCR_PREVIEW, item.ocrText)
+            putExtra(PreviewActivity.EXTRA_CATEGORY, item.category.display)
+        }
+        previewLauncher.launch(intent)
     }
 
     private var dragActive = false
@@ -68,7 +87,8 @@ class MainActivity : AppCompatActivity() {
 
         adapter = MediaAdapter(
             onSelectionChanged = ::updateStatus,
-            onDragStart = { dragActive = true }
+            onDragStart = { dragActive = true },
+            onPreview = ::openPreview
         )
         val spanCount = 3
         val layoutManager = GridLayoutManager(this, spanCount)
@@ -322,10 +342,19 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val pendingIntent = MediaStore.createDeleteRequest(contentResolver, toDelete)
-            deleteLauncher.launch(
-                androidx.activity.result.IntentSenderRequest.Builder(pendingIntent.intentSender).build()
-            )
+            try {
+                // createTrashRequest → OS Trash (30-day recovery via gallery app)
+                val pendingIntent = MediaStore.createTrashRequest(contentResolver, toDelete, true)
+                deleteLauncher.launch(
+                    androidx.activity.result.IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                )
+            } catch (e: Exception) {
+                // Fallback to permanent delete request if trash is not available
+                val pendingIntent = MediaStore.createDeleteRequest(contentResolver, toDelete)
+                deleteLauncher.launch(
+                    androidx.activity.result.IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                )
+            }
         } else {
             var count = 0
             toDelete.forEach { uri ->
