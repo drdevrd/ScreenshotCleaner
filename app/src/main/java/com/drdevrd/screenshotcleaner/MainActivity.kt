@@ -146,6 +146,11 @@ class MainActivity : AppCompatActivity() {
             confirmClearCache()
             true
         }
+        binding.aiButton.setOnClickListener { runDeepCategorize() }
+        binding.aiButton.setOnLongClickListener {
+            startActivity(android.content.Intent(this, SettingsActivity::class.java))
+            true
+        }
         binding.selectAllButton.setOnClickListener {
             val anySelected = adapter.allItems().any { it.selected }
             adapter.selectAll(!anySelected)
@@ -372,6 +377,66 @@ class MainActivity : AppCompatActivity() {
             }
             Toast.makeText(this, "Deleted $count", Toast.LENGTH_SHORT).show()
             loadCached()
+        }
+    }
+
+    private fun runDeepCategorize() {
+        val apiKey = SettingsActivity.getApiKey(this)
+        if (apiKey.isEmpty()) {
+            Toast.makeText(
+                this,
+                "Set your Anthropic API key first (long-press AI)",
+                Toast.LENGTH_LONG
+            ).show()
+            startActivity(android.content.Intent(this, SettingsActivity::class.java))
+            return
+        }
+        // Only re-categorize items ML Kit couldn't identify (avoids wasting API calls)
+        val toReclassify = allCurrentItems.filter { it.category == Category.OTHER }
+        if (toReclassify.isEmpty()) {
+            Toast.makeText(this, "Nothing filed as 'Other' to re-categorize", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Deep Categorize")
+            .setMessage(
+                "Send ${toReclassify.size} '${Category.OTHER.display}' items in ${labelFor(currentType)} " +
+                        "to Anthropic Claude for classification?\n\n" +
+                        "These photos will leave your device. Cost is roughly \$0.002 per item."
+            )
+            .setPositiveButton("Send") { _, _ -> startDeepCategorize(apiKey, toReclassify) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun startDeepCategorize(apiKey: String, items: List<MediaItem>) {
+        val typeAtStart = currentType
+        scanJob?.cancel()
+        scanJob = lifecycleScope.launch {
+            var done = 0
+            var changed = 0
+            for (item in items) {
+                if (typeAtStart != currentType) return@launch
+                val newCategory = withContext(Dispatchers.IO) {
+                    val bitmap = Analyzer.loadBitmap(this@MainActivity, item) ?: return@withContext null
+                    val result = try {
+                        ClaudeVision.categorize(apiKey, bitmap)
+                    } catch (_: Exception) { null }
+                    if (!bitmap.isRecycled) bitmap.recycle()
+                    result
+                }
+                done++
+                if (newCategory != null && newCategory != item.category) {
+                    item.category = newCategory
+                    withContext(Dispatchers.IO) { cacheDb.save(item) }
+                    changed++
+                }
+                if (done % 3 == 0 || done == items.size) {
+                    applyFilter()
+                    binding.statusText.text = "AI: $done/${items.size} · $changed re-filed"
+                }
+            }
+            binding.statusText.text = "AI done · $done processed · $changed re-filed"
         }
     }
 

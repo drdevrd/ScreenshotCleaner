@@ -134,6 +134,14 @@ object Analyzer {
         }
     }
 
+    /** Public helper to load a downscaled bitmap for a media item — used by Deep Categorize. */
+    fun loadBitmap(context: android.content.Context, item: MediaItem): android.graphics.Bitmap? {
+        return when (item.type) {
+            MediaType.VIDEO -> loadVideoFrame(context, item.uri)
+            else -> loadImageDownscaled(context.contentResolver, item.uri)
+        }
+    }
+
     private fun loadImageDownscaled(resolver: ContentResolver, uri: Uri): Bitmap? {
         return try {
             resolver.openInputStream(uri)?.use { input ->

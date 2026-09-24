@@ -18,7 +18,17 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Loading..."
-            android:textSize="14sp" />
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/aiButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="AI"
+            android:minWidth="0dp"
+            android:paddingHorizontal="12dp" />
+
+        <Space android:layout_width="4dp" android:layout_height="1dp" />
 
         <Button
             android:id="@+id/scanButton"

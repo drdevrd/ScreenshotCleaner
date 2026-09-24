@@ -54,4 +54,7 @@ dependencies {
     // Coil for local image + video-frame thumbnail loading
     implementation("io.coil-kt:coil:2.6.0")
     implementation("io.coil-kt:coil-video:2.6.0")
+
+    // OkHttp for optional Claude Vision API integration (opt-in Deep Categorize feature)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
