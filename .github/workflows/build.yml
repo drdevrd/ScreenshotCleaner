@@ -35,6 +35,26 @@ jobs:
             || echo "WARNING: Model download failed. App will run without TFLite classifier."
           ls -la app/src/main/assets/ || true
 
+      - name: Download CLIP ONNX models + tokenizer
+        run: |
+          mkdir -p app/src/main/assets
+          # Image encoder (quantized, ~25MB)
+          curl -L --fail --retry 3 -o app/src/main/assets/clip_image.onnx \
+            "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model_quantized.onnx" \
+            || echo "WARNING: CLIP image encoder download failed."
+          # Text encoder (quantized, ~30MB)
+          curl -L --fail --retry 3 -o app/src/main/assets/clip_text.onnx \
+            "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/text_model_quantized.onnx" \
+            || echo "WARNING: CLIP text encoder download failed."
+          # BPE tokenizer files (~1.5MB)
+          curl -L --fail --retry 3 -o app/src/main/assets/clip_vocab.json \
+            "https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/vocab.json" \
+            || echo "WARNING: CLIP vocab download failed."
+          curl -L --fail --retry 3 -o app/src/main/assets/clip_merges.txt \
+            "https://huggingface.co/openai/clip-vit-base-patch32/resolve/main/merges.txt" \
+            || echo "WARNING: CLIP merges download failed."
+          ls -la app/src/main/assets/ || true
+
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon
 

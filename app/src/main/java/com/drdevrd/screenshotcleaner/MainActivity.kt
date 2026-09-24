@@ -85,6 +85,7 @@ class MainActivity : AppCompatActivity() {
 
         cacheDb = MediaCacheDb(applicationContext)
         TfLiteClassifier.init(applicationContext)
+        ClipEncoder.init(applicationContext)
 
         adapter = MediaAdapter(
             onSelectionChanged = ::updateStatus,
@@ -216,6 +217,7 @@ class MainActivity : AppCompatActivity() {
                     labels = cached.labels
                     category = cached.category
                     pHash = cached.pHash
+                    embedding = cached.embedding
                 }
             }
             Analyzer.groupBySimilarity(items)
@@ -266,6 +268,7 @@ class MainActivity : AppCompatActivity() {
                     item.labels = hit.labels
                     item.category = hit.category
                     item.pHash = hit.pHash
+                    item.embedding = hit.embedding
                     cached.add(item)
                 } else {
                     toAnalyze.add(item)
@@ -306,26 +309,63 @@ class MainActivity : AppCompatActivity() {
         val filtered = if (currentQuery.isEmpty()) {
             allCurrentItems.toList()
         } else {
-            val q = currentQuery.lowercase()
-            // Split query into words — each word must match (AND semantics)
-            val words = q.split(Regex("\\s+")).filter { it.isNotBlank() }
-            val patterns = words.map { word ->
-                val stem = if (word.length > 3 && word.endsWith("s")) word.dropLast(1) else word
-                val esc = Regex.escape(word)
-                val escStem = if (word != stem) Regex.escape(stem) else esc
-                if (word != stem) {
-                    Regex("\\b($esc|$escStem)\\b", RegexOption.IGNORE_CASE)
-                } else {
-                    Regex("\\b$esc\\b", RegexOption.IGNORE_CASE)
-                }
-            }
-            allCurrentItems.filter { item ->
-                val haystack = "${item.ocrText} ${item.labels} ${item.category.display}"
-                patterns.all { it.containsMatchIn(haystack) }
-            }
+            hybridSearch(currentQuery)
         }
         adapter.submit(filtered)
         updateStatus()
+    }
+
+    /**
+     * Search that combines two signals:
+     *  1. Semantic (CLIP): encode query text → cosine similarity vs each item's embedding.
+     *     Returns top-scoring items above a threshold.
+     *  2. Keyword (word-boundary regex on OCR text + labels + category).
+     * Results are the union: an item that either strongly matches semantically OR passes
+     * the keyword filter is included. Semantic hits are ranked first.
+     */
+    private fun hybridSearch(query: String): List<MediaItem> {
+        val q = query.lowercase()
+        val words = q.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val patterns = words.map { word ->
+            val stem = if (word.length > 3 && word.endsWith("s")) word.dropLast(1) else word
+            val esc = Regex.escape(word)
+            val escStem = if (word != stem) Regex.escape(stem) else esc
+            if (word != stem) Regex("\\b($esc|$escStem)\\b", RegexOption.IGNORE_CASE)
+            else Regex("\\b$esc\\b", RegexOption.IGNORE_CASE)
+        }
+
+        // Keyword filter first
+        val keywordHits = allCurrentItems.filter { item ->
+            val haystack = "${item.ocrText} ${item.labels} ${item.category.display}"
+            patterns.all { it.containsMatchIn(haystack) }
+        }.toMutableSet()
+
+        // Semantic CLIP filter — merge in top matches above threshold
+        if (ClipEncoder.isReady) {
+            val queryEmbedding = ClipEncoder.encodeText(query)
+            if (queryEmbedding != null) {
+                val scored = allCurrentItems.mapNotNull { item ->
+                    val emb = item.embedding ?: return@mapNotNull null
+                    val score = ClipEncoder.similarity(queryEmbedding, emb)
+                    if (score >= SEMANTIC_THRESHOLD) item to score else null
+                }.sortedByDescending { it.second }
+
+                // Take top semantic hits (up to a cap so results stay relevant)
+                val semanticHits = scored.take(200).map { it.first }
+                // Ranked: semantic hits first (highest score), then keyword-only hits
+                val ordered = LinkedHashSet<MediaItem>()
+                ordered.addAll(semanticHits)
+                ordered.addAll(keywordHits)
+                return ordered.toList()
+            }
+        }
+        return keywordHits.toList()
+    }
+
+    companion object {
+        // Cosine-similarity threshold for CLIP semantic matches. 0.2-0.25 is typical for
+        // "loosely related", 0.3+ is "clearly matching". We use 0.22 as a permissive floor.
+        private const val SEMANTIC_THRESHOLD = 0.22f
     }
 
     private fun updateStatus() {

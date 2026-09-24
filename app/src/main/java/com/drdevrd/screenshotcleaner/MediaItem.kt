@@ -34,5 +34,6 @@ data class MediaItem(
     var category: Category = Category.OTHER,
     var groupKey: String = "",   // items with the same groupKey are "similar"
     var pHash: Long = 0L,
+    var embedding: FloatArray? = null,   // CLIP 512-dim vector for semantic search
     var selected: Boolean = false
 )

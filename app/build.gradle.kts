@@ -59,4 +59,7 @@ dependencies {
 
     // OkHttp for optional Claude Vision API integration (opt-in Deep Categorize feature)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // ONNX Runtime for on-device CLIP image + text encoders (semantic search)
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.16.3")
 }

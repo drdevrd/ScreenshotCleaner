@@ -154,6 +154,12 @@ object Analyzer {
 
         item.labels = labels.joinToString(",")
 
+        // CLIP embedding for semantic search (falls through if model didn't load)
+        try {
+            val embedding = ClipEncoder.encodeImage(bitmap)
+            if (embedding != null) item.embedding = embedding
+        } catch (_: Exception) { /* leave empty */ }
+
         item.category = categorize(text, labels)
         item.pHash = averageHash(bitmap)
 

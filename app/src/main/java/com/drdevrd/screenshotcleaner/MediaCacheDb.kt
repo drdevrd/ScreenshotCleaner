@@ -9,14 +9,15 @@ data class CachedAnalysis(
     val ocrText: String,
     val labels: String,
     val category: Category,
-    val pHash: Long
+    val pHash: Long,
+    val embedding: FloatArray?
 )
 
 /**
- * Local SQLite cache for analysis results, keyed by (media_id, media_type).
- * v2 adds a `labels` column storing on-device scene labels (comma-separated),
- * so search can match keywords like "tile", "car", "beach" that appear in
- * scene labels but not in OCR text.
+ * Local SQLite cache. Version history:
+ *  v1 - initial: id, type, ocr_text, category, phash
+ *  v2 - added: labels column
+ *  v3 - added: embedding BLOB column (CLIP 512-dim vector for semantic search)
  */
 class MediaCacheDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, DB_VERSION) {
 
@@ -30,6 +31,7 @@ class MediaCacheDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                 labels     TEXT,
                 category   TEXT,
                 phash      INTEGER,
+                embedding  BLOB,
                 analyzed_at INTEGER,
                 PRIMARY KEY (media_id, media_type)
             )
@@ -40,20 +42,17 @@ class MediaCacheDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
-            // Add labels column while preserving previously-analyzed OCR / category rows.
-            // Older items will have empty labels until re-analyzed (long-press Scan → Clear).
-            try {
-                db.execSQL("ALTER TABLE analysis ADD COLUMN labels TEXT")
-            } catch (_: Exception) {
-                // Column may already exist on some devices; ignore.
-            }
+            try { db.execSQL("ALTER TABLE analysis ADD COLUMN labels TEXT") } catch (_: Exception) {}
+        }
+        if (oldVersion < 3) {
+            try { db.execSQL("ALTER TABLE analysis ADD COLUMN embedding BLOB") } catch (_: Exception) {}
         }
     }
 
     fun getAllForType(type: MediaType): Map<Long, CachedAnalysis> {
         val map = HashMap<Long, CachedAnalysis>()
         readableDatabase.rawQuery(
-            "SELECT media_id, ocr_text, labels, category, phash FROM analysis WHERE media_type = ?",
+            "SELECT media_id, ocr_text, labels, category, phash, embedding FROM analysis WHERE media_type = ?",
             arrayOf(type.name)
         ).use { cursor ->
             while (cursor.moveToNext()) {
@@ -62,8 +61,10 @@ class MediaCacheDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
                 val labels = cursor.getString(2) ?: ""
                 val categoryName = cursor.getString(3) ?: "OTHER"
                 val phash = cursor.getLong(4)
+                val embeddingBytes: ByteArray? = if (cursor.isNull(5)) null else cursor.getBlob(5)
+                val embedding = embeddingBytes?.let { ClipEncoder.bytesToEmbedding(it) }
                 val category = try { Category.valueOf(categoryName) } catch (_: Exception) { Category.OTHER }
-                map[id] = CachedAnalysis(ocrText, labels, category, phash)
+                map[id] = CachedAnalysis(ocrText, labels, category, phash, embedding)
             }
         }
         return map
@@ -77,6 +78,7 @@ class MediaCacheDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
             put("labels", item.labels)
             put("category", item.category.name)
             put("phash", item.pHash)
+            item.embedding?.let { put("embedding", ClipEncoder.embeddingToBytes(it)) }
             put("analyzed_at", System.currentTimeMillis())
         }
         writableDatabase.insertWithOnConflict(
@@ -90,6 +92,6 @@ class MediaCacheDb(context: Context) : SQLiteOpenHelper(context, DB_NAME, null, 
 
     companion object {
         private const val DB_NAME = "media_cache.db"
-        private const val DB_VERSION = 2
+        private const val DB_VERSION = 3
     }
 }
